@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  owi2plex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owi2plex
+    environment:
+      TZ: Europe/Berlin
+
+      # --- OpenWebIf connection ---
+      OWI_HOST: "192.168.1.50"         # REQUIRED: your Enigma2 box IP/host
+      OWI_PORT: "80"                   # default 80
+      OWI_USERNAME: ""                 # if OWIF auth enabled
+      OWI_PASSWORD: ""                 # if OWIF auth enabled
+
+      # --- What to export ---
+      OWI_BOUQUETS: "TV,Radio"         # comma-separated; leave empty => all bouquets
+      OWI_OUTPUT_FILE: "/data/epg.xml" # where to write XML
+      OWI_CONTINUOUS_NUMBERING: "true" # true/false
+      OWI_CATEGORY_OVERRIDE: "/config/cat_overrides.yml"  # optional, mount file
+      OWI_DEBUG: "false"               # true for verbose log
+
+      # --- Scheduling ---
+      CRON_SCHEDULE: "0 4 * * *"       # run daily at 04:00; empty to disable cron
+      RUN_ON_START: "true"             # also run once at container start
+      RUN_ONCE: "false"                 # set true to run a single job and exit (overrides cron)
+
+    volumes:
+      - ./data:/data                  # epg.xml output
+      - ./config:/config              # optional overrides etc.
+    restart: unless-stopped

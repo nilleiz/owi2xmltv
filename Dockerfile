@@ -1,42 +1,27 @@
-FROM alpine:latest
-RUN apk update
-RUN apk upgrade
-RUN apk add --no-cache ca-certificates
+# syntax=docker/dockerfile:1
+FROM python:3.12-alpine
 
-MAINTAINER alturismo alturismo@gmail.com
+# System deps
+RUN apk add --no-cache bash tzdata ca-certificates curl shadow \
+    && addgroup -S app && adduser -S -G app app
 
-# Extras
-RUN apk add --no-cache curl
+# Install owi2plex CLI from PyPI
+# (provides the `owi2plex` entrypoint with the flags from upstream)
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir owi2plex
 
-# Install Python3 and owi2plex
-RUN apk add --no-cache python3 py3-pip libxml2 libxml2-dev
-RUN apk add --update --no-cache g++ libxslt-dev python3-dev
-RUN pip3 install lxml
-RUN pip3 install owi2plex
-
-# Timezone (TZ)
-RUN apk update && apk add --no-cache tzdata
+# Folders
 ENV TZ=Europe/Berlin
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+WORKDIR /app
+RUN mkdir -p /data /config /var/log/cron && chown -R app:app /app /data /config /var/log/cron
 
-# Add Bash shell & dependancies
-RUN apk add --no-cache bash busybox-suid su-exec
+# Copy entrypoint
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Volumes
-VOLUME /config
-VOLUME /owi2plex
+USER app
 
-# Add xTeve and guide2go
-ADD cronjob.sh /
-ADD entrypoint.sh /
-ADD sample_cron.txt /
+# Default: nothing exposed; XML is written to /data by default
+VOLUME ["/data", "/config"]
 
-# Add Fix
-COPY ./owi2plex.py /usr/bin/owi2plex.py
-
-# Set executable permissions
-RUN chmod +x /entrypoint.sh
-RUN chmod +x /cronjob.sh
-
-# Entrypoint
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

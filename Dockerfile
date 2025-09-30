@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1
-# Use Python 3.10 because owi2plex pins lxml==4.3.2 which is not compatible with CPython 3.12
-FROM python:3.10-alpine
+FROM python:3.12-alpine
 
-# --- Runtime packages (plus libs lxml needs at runtime) ---
-RUN apk add --no-cache \
-    bash tzdata ca-certificates curl shadow \
-    libxml2 libxslt \
+# Minimal runtime packages
+RUN apk add --no-cache bash tzdata ca-certificates curl shadow \
  && addgroup -S app && adduser -S -G app app
 
 ENV TZ=Europe/Berlin
 WORKDIR /app
 
-# --- Build deps just for pip install (build lxml from source on Alpine) ---
-RUN apk add --no-cache --virtual .build-deps \
-      build-base libxml2-dev libxslt-dev python3-dev \
- && pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir owi2plex \
- && apk del .build-deps
+# ---- Dependency strategy -----------------------------------------------------
+# owi2plex pins very old deps including lxml==4.3.2 which won't build on modern stacks.
+# Fix: install a recent prebuilt lxml wheel, then install owi2plex *without* deps,
+# and add its pinned deps explicitly.
+# This avoids any native compilation and keeps the image tiny & stable.
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir "lxml==4.9.4" \
+ && pip install --no-cache-dir --no-deps "owi2plex==0.1a14" \
+ && pip install --no-cache-dir "click==7.0" "requests==2.21.0" "future==0.17.1" "PyYAML==5.1.2"
 
-# --- Layout & permissions ---
+# Layout & permissions
 RUN mkdir -p /data /config /var/log/cron \
  && chown -R app:app /app /data /config /var/log/cron
 
-# --- Entrypoint (same as before; make sure this file is in the build context) ---
+# Entrypoint script (place this file next to the Dockerfile)
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

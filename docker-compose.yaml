@@ -1,32 +1,31 @@
 version: "3.9"
+
 services:
   owi2plex:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: nillivanilli0815/owi2plex:latest
     container_name: owi2plex
     environment:
       TZ: Europe/Berlin
 
       # --- OpenWebIf connection ---
-      OWI_HOST: "192.168.1.50"         # REQUIRED: your Enigma2 box IP/host
-      OWI_PORT: "80"                   # default 80
-      OWI_USERNAME: ""                 # if OWIF auth enabled
-      OWI_PASSWORD: ""                 # if OWIF auth enabled
+      OWI_HOST: "192.168.1.50"        # REQUIRED: your Enigma2 box IP/host
+      OWI_PORT: "80"                  # optional
+      OWI_USERNAME: ""                # if OWIF auth enabled
+      OWI_PASSWORD: ""                # if OWIF auth enabled
 
-      # --- What to export ---
-      OWI_BOUQUETS: "TV,Radio"         # comma-separated; leave empty => all bouquets
-      OWI_OUTPUT_FILE: "/data/epg.xml" # where to write XML
-      OWI_CONTINUOUS_NUMBERING: "true" # true/false
-      OWI_CATEGORY_OVERRIDE: "/config/cat_overrides.yml"  # optional, mount file
-      OWI_DEBUG: "false"               # true for verbose log
+      # --- Export settings ---
+      OWI_BOUQUETS: "TV,Radio"        # comma-separated; empty => all bouquets
+      OWI_OUTPUT_FILE: "/data/epg.xml"
+      OWI_CONTINUOUS_NUMBERING: "true"
+      OWI_CATEGORY_OVERRIDE: "/config/cat_overrides.yml"  # optional file path
+      OWI_DEBUG: "false"
 
       # --- Scheduling ---
-      CRON_SCHEDULE: "0 4 * * *"       # run daily at 04:00; empty to disable cron
-      RUN_ON_START: "true"             # also run once at container start
-      RUN_ONCE: "false"                 # set true to run a single job and exit (overrides cron)
+      CRON_SCHEDULE: "0 4 * * *"      # run daily at 04:00; empty to disable cron
+      RUN_ON_START: "true"            # also run once at container start
+      RUN_ONCE: "false"               # set true to run a single job and exit
 
     volumes:
-      - ./data:/data                  # epg.xml output
-      - ./config:/config              # optional overrides etc.
+      - ./data:/data                  # where epg.xml is written
+      - ./config:/config              # optional config files
     restart: unless-stopped

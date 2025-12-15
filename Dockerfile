@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-alpine
 
-RUN apk add --no-cache bash tzdata ca-certificates curl shadow su-exec
+RUN apk add --no-cache bash tzdata ca-certificates curl shadow su-exec util-linux
 RUN addgroup -S app && adduser -S -G app app
 ENV TZ=Europe/Berlin
 WORKDIR /app

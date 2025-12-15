@@ -77,19 +77,19 @@ fi
 # -------------------- Runners --------------------
 run_job() {
   log "Running as 'app': owi2plex ${args[*]}"
-  exec su-exec app owi2plex "${args[@]}"
+  exec /sbin/su-exec app owi2plex "${args[@]}"
 }
 
 run_once() {
   log "Start-on-boot run..."
-  su-exec app owi2plex "${args[@]}" || true
+  /sbin/su-exec app owi2plex "${args[@]}" || true
 }
 
 # Create a tiny wrapper for cron to avoid quoting headaches
 make_cron_wrapper() {
   local f=/usr/local/bin/owi2plex_run
   {
-    printf '#!/bin/sh\nexec su-exec app owi2plex'
+    printf '#!/bin/sh\nexec /sbin/su-exec app owi2plex'
     for a in "${args[@]}"; do
       printf ' %s' "$(sq "$a")"
     done

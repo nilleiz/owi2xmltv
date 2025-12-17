@@ -77,19 +77,19 @@ fi
 # -------------------- Runners --------------------
 run_job() {
   log "Running as 'app': owi2plex ${args[*]}"
-  exec su-exec app owi2plex "${args[@]}"
+  exec /sbin/su-exec app owi2plex "${args[@]}"
 }
 
 run_once() {
   log "Start-on-boot run..."
-  su-exec app owi2plex "${args[@]}" || true
+  /sbin/su-exec app owi2plex "${args[@]}" || true
 }
 
 # Create a tiny wrapper for cron to avoid quoting headaches
 make_cron_wrapper() {
   local f=/usr/local/bin/owi2plex_run
   {
-    printf '#!/bin/sh\nexec su-exec app owi2plex'
+    printf '#!/bin/sh\nexec /sbin/su-exec app owi2plex'
     for a in "${args[@]}"; do
       printf ' %s' "$(sq "$a")"
     done
@@ -99,18 +99,28 @@ make_cron_wrapper() {
   echo "$f"
 }
 
-setup_cron() {
+install_crontab() {
+  local schedule="$1" runner="$2"
+  local cron_dir=/var/spool/cron/crontabs
+  local cron_file="$cron_dir/root"
+
+  mkdir -p "$cron_dir"
+  local line="$schedule /usr/bin/flock -n /tmp/owi2plex.lock $runner >> /var/log/cron/owi2plex.log 2>&1"
+  printf '%s\n' "$line" > "$cron_file"
+  chmod 600 "$cron_file"
+
+  log "Installed cron: $line"
+}
+
+run_scheduler() {
   local schedule="$1"
   local runner
   runner="$(make_cron_wrapper)"
 
-  # BusyBox cron uses /etc/crontabs/root
-  local line="$schedule /usr/bin/flock -n /tmp/owi2plex.lock $runner >> /var/log/cron/owi2plex.log 2>&1"
-  echo "$line" > /etc/crontabs/root
-  log "Installed cron: $line"
+  install_crontab "$schedule" "$runner"
 
-  # Foreground cron so the container stays up; log to file
-  exec crond -f -L /var/log/cron/cron.log
+  # Foreground cron so the container stays up; log to file and point at the right spool dir
+  exec crond -f -L /var/log/cron/cron.log -c /var/spool/cron/crontabs
 }
 
 # -------------------- Control flow ---------------
@@ -122,7 +132,7 @@ if [[ -n "$CRON_SCHEDULE" ]]; then
   if is_true "$RUN_ON_START"; then
     run_once
   fi
-  setup_cron "$CRON_SCHEDULE"
+  run_scheduler "$CRON_SCHEDULE"
 else
   if is_true "$RUN_ON_START"; then
     run_job

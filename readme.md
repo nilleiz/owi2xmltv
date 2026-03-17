@@ -12,6 +12,8 @@ The container now uses an internal Python scheduler (`runner.py`) with cron expr
 - no `CRON_SCHEDULE` + `RUN_ON_START=true` -> run once and exit.
 - no `CRON_SCHEDULE` + `RUN_ON_START=false` -> stay idle.
 
+The image now also installs an explicit `/usr/local/bin/owi2plex` launcher so the scheduler can always execute `owi2plex` reliably.
+
 ## Logs now include
 
 - Effective runtime config (run-related env vars, secrets masked as *_SET booleans).

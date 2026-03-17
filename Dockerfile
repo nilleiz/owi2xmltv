@@ -16,12 +16,15 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir \
-      click \
-      lxml \
-      requests
+      click==8.1.8 \
+      lxml==5.3.1 \
+      requests==2.32.3
 
 COPY owi2plex.py /app/owi2plex.py
 COPY runner.py /app/runner.py
+
+RUN printf '%s\n' '#!/usr/bin/env sh' 'exec python /app/owi2plex.py "$@"' > /usr/local/bin/owi2plex \
+ && chmod +x /usr/local/bin/owi2plex
 
 RUN useradd --system --uid 10001 --create-home app \
  && mkdir -p /data /config \

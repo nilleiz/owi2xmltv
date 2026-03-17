@@ -6,26 +6,32 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Berlin
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tzdata ca-certificates curl git tini \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      tini \
+      tzdata \
  && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache bash tzdata ca-certificates curl shadow su-exec util-linux
-RUN addgroup -S app && adduser -S -G app app
-ENV TZ=Europe/Berlin
 WORKDIR /app
 
-# Install dependencies for local runner and owi2plex CLI.
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir requests click future PyYAML lxml
+ && pip install --no-cache-dir \
+      click \
+      future \
+      lxml \
+      PyYAML \
+      requests
 
-# Install owi2plex from upstream source to avoid depending on stale binary wheels.
+# Build/install owi2plex from source.
 RUN git clone --depth=1 https://github.com/cvarelaruiz/owi2plex /tmp/owi2plex-src \
  && pip install --no-cache-dir /tmp/owi2plex-src \
  && rm -rf /tmp/owi2plex-src
 
 COPY runner.py /app/runner.py
 
-RUN useradd -r -u 10001 -m app \
+RUN useradd --system --uid 10001 --create-home app \
  && mkdir -p /data /config \
  && chown -R app:app /app /data /config
 

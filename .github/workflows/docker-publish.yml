@@ -17,12 +17,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate shell scripts
-        run: |
-          bash -n entrypoint.sh
-          bash -n cronjob.sh
+        run: bash -n cronjob.sh
 
       - name: Validate Python syntax
-        run: python -m py_compile owi2plex.py
+        run: |
+          python -m py_compile owi2plex.py
+          python -m py_compile runner.py
 
   docker:
     runs-on: ubuntu-latest

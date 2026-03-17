@@ -11,7 +11,7 @@ The entrypoint uses:
 
 The cron line uses `flock` to avoid overlapping runs. If `flock` is missing in the container, cron executions fail while the startup run still succeeds, which looks like "it only triggers once".
 
-This repository now installs `util-linux` in the image so `/usr/bin/flock` is available.
+This repository now installs `util-linux` in the image so `/usr/bin/flock` is available, and starts `crond` with an explicit cron directory (`-c /etc/crontabs`) to ensure scheduled jobs are read correctly on Alpine.
 
 ## Example compose
 

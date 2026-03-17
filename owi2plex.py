@@ -365,8 +365,16 @@ def generateXMLTV(bouquets_services, epg, api_root_url, tzoffset):
     is_flag=True)
 @click.option('-V', '--version', help='displays the version of the package.',
     is_flag=True)
+@click.option('--continuous-numbering',
+    help='Normalize channel numbers across selected bouquets.', is_flag=True)
+@click.option('--category-override',
+    help='Path to optional category override file (accepted for compatibility).',
+    type=click.STRING)
+@click.option('--debug', help='Enable debug mode (compatibility flag).',
+    is_flag=True)
 def main(bouquet=None, username=None, password=None, host='localhost', port=80,
-    output_file='epg.xmltv', list_bouquets=False, version=False):
+    output_file='epg.xmltv', list_bouquets=False, version=False,
+    continuous_numbering=False, category_override=None, debug=False):
 
     if version:
         print("OWI2PLEX version 0.1-alpha-3")
@@ -376,6 +384,20 @@ def main(bouquet=None, username=None, password=None, host='localhost', port=80,
     bouquets = getBouquets(bouquet=bouquet, api_root_url=api_root_url,
         list_bouquets=list_bouquets)
     bouquets_services = getBouquetsServices(bouquets=bouquets, api_root_url=api_root_url)
+    if continuous_numbering:
+        next_position = 1
+        for services in bouquets_services.values():
+            for service in services:
+                if service.get('pos'):
+                    service['pos'] = next_position
+                    next_position += 1
+
+    if category_override:
+        print("Category override file support is not available in this build; ignoring {}".format(category_override))
+
+    if debug:
+        print("Debug flag enabled")
+
     epg = getEPGs(bouquets_services=bouquets_services, api_root_url=api_root_url)
     tzoffset = getOffset(api_root_url=api_root_url)
     xmltv = generateXMLTV(bouquets_services, epg, api_root_url, tzoffset)

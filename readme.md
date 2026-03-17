@@ -1,35 +1,74 @@
-# owi2plex in docker with cron
+# owi2xmltv Docker image
 
-after docker start check your config folder and do your setups, setup is persistent, start from scratch by delete them
+This image runs `owi2plex` either once at startup or on a cron schedule (or both).
 
-cron start options are updated on docker restart.
+## Why cron only ran once before
 
-mounts to use as sample \
-Container Path: /config <> /mnt/user/appdata/owi2plex/_config/ \
-Container Path: /owi2plex <> /mnt/user/appdata/owi2plex/ \
-Container Path: /TVH <> /mnt/user/appdata/tvheadend/data/ << not needed if no TVHeadend is used \
-while /mnt/user/appdata/ should fit to your system path ...
+The entrypoint uses:
 
+- one run at container startup when `RUN_ON_START=true`
+- periodic runs from BusyBox cron when `CRON_SCHEDULE` is set
+
+The cron line uses `flock` to avoid overlapping runs. If `flock` is missing in the container, cron executions fail while the startup run still succeeds, which looks like "it only triggers once".
+
+This repository now installs `util-linux` in the image so `/usr/bin/flock` is available.
+
+## Example compose
+
+```yaml
+version: "3.9"
+
+services:
+  owi2xmltv:
+    image: nillivanilli0815/owi2xmltv:latest
+    container_name: owi2xmltv
+    environment:
+      TZ: Europe/Berlin
+
+      # OpenWebIf (required)
+      OWI_HOST: "192.168.1.50"
+      OWI_PORT: "80"
+      OWI_USERNAME: ""
+      OWI_PASSWORD: ""
+
+      # Export
+      OWI_BOUQUETS: "TV,Radio"
+      OWI_OUTPUT_FILE: "/data/epg.xml"
+      OWI_CONTINUOUS_NUMBERING: "true"
+      OWI_CATEGORY_OVERRIDE: "/config/cat_overrides.yml"
+      OWI_DEBUG: "false"
+
+      # Scheduling
+      CRON_SCHEDULE: "0 4 * * *"
+      RUN_ON_START: "true"
+      RUN_ONCE: "false"
+
+    volumes:
+      - ./data:/data
+      - ./config:/config
+    restart: unless-stopped
 ```
-docker run -d \
-  --name=owi2plex \
-  --net=bridge \
-  --log-opt max-size=10m \
-  --log-opt max-file=3 \
-  -e TZ="Europe/Berlin" \
-  -v /mnt/user/appdata/owi2plex/_config:/config:rw \
-  -v /mnt/user/appdata/owi2plex/:/owi2plex:rw \
-  alturismo/owi2plex
-```
 
-to test the cronjob functions \
-docker exec -it "dockername" ./config/cronjob.sh
+## GitHub Actions Docker publish
 
-included functions are (all can be individual turned on / off)
+Workflow: `.github/workflows/docker-publish.yml`
 
-owi2plex - xmltv epg grabber for enigma receivers using open web, thanks to @cvarelaruiz \
-github: https://github.com/cvarelaruiz/owi2plex
+It builds and pushes multi-arch images (`linux/amd64`, `linux/arm64`) to:
 
-some small script lines cause i personally use tvheadend and get playlist for xteve and cp xml data to tvheadend
+- `nillivanilli0815/owi2xmltv:latest` (on default branch: `master`/`main`)
+- `nillivanilli0815/owi2xmltv:<tag>` (on git tags like `v1.0.0`)
+- `nillivanilli0815/owi2xmltv:sha-...`
 
-so, credits to the programmers, i just putted this together in a docker to fit my needs 
+### Required GitHub repository secrets for Docker Hub auth
+
+Add these under **GitHub repo → Settings → Secrets and variables → Actions**:
+
+- `DOCKERHUB_USERNAME` = your Docker Hub username (`nillivanilli0815`)
+- `DOCKERHUB_TOKEN` = a Docker Hub **Access Token** (recommended) or password
+
+To create token in Docker Hub:
+
+1. Docker Hub → Account Settings → Personal access tokens
+2. Create token (Read/Write/Delete permission for pushes)
+3. Save token once, then place it in `DOCKERHUB_TOKEN`
+

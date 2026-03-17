@@ -1,6 +1,6 @@
 # owi2xmltv Docker image
 
-This image runs a bundled `owi2plex.py` with the same environment variables as before, but with a rewritten runtime scheduler that is deterministic and fully visible in container logs.
+This image runs `owi2plex` with the same environment variables as before, but with a rewritten runtime scheduler that is deterministic and fully visible in container logs.
 
 ## Runtime behavior
 
@@ -63,10 +63,6 @@ services:
       - ./config:/config
     restart: unless-stopped
 ```
-
-## Build notes
-
-The image does not clone external source during build; it uses the repository's bundled `owi2plex.py` to avoid network-related build failures in CI.
 
 ## GitHub Actions publish
 

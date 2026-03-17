@@ -122,7 +122,7 @@ def build_args(env: dict[str, str]) -> list[str]:
 
 
 def run_owi2plex(args: list[str], reason: str) -> int:
-    cmd = [sys.executable, "/app/owi2plex.py"] + args
+    cmd = ["owi2plex"] + args
     log(f"Starting owi2plex ({reason}): {' '.join(shlex.quote(a) for a in cmd)}")
     process = subprocess.Popen(
         cmd,

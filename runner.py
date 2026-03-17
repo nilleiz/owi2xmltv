@@ -38,25 +38,57 @@ def clean_owi2plex_line(line: str) -> str:
         return text
 
 
+def _describe_cron_field(field: str, unit: str) -> str:
+    token = field.strip()
+    if token == "*":
+        return f"every {unit}"
+    if token.startswith("*/"):
+        return f"every {token[2:]} {unit}s"
+    if "," in token:
+        return f"{unit}s {token}"
+    if "-" in token:
+        return f"{unit}s {token}"
+    return f"{unit} {token}"
+
+
+def describe_cron(expr: str) -> str:
+    parts = expr.split()
+    if len(parts) != 5:
+        return "(invalid cron expression)"
+
+    minute, hour, day, month, weekday = parts
+    return (
+        f"{_describe_cron_field(minute, 'minute')}, "
+        f"{_describe_cron_field(hour, 'hour')}, "
+        f"{_describe_cron_field(day, 'day')}, "
+        f"{_describe_cron_field(month, 'month')}, "
+        f"{_describe_cron_field(weekday, 'weekday')}"
+    )
+
+
 def log_run_options(env: dict[str, str], args: list[str], *, cron_schedule: str, run_on_start: bool, run_once: bool, tz_name: str) -> None:
     masked_password = "set" if env.get("OWI_PASSWORD", "") else "not set"
     masked_username = "set" if env.get("OWI_USERNAME", "") else "not set"
     mode = "RUN_ONCE" if run_once else ("CRON" if cron_schedule else "SINGLE_RUN" if run_on_start else "IDLE")
 
     log("Run options:")
-    log(f"  mode={mode} tz={tz_name}")
-    log(f"  host={env.get('OWI_HOST', '')}:{env.get('OWI_PORT', '80')} username={masked_username} password={masked_password}")
-    log(f"  bouquets={env.get('OWI_BOUQUETS', '') or '<all>'}")
-    log(f"  output_file={env.get('OWI_OUTPUT_FILE', '/data/epg.xml')}")
+    log(f"  • Mode: {mode}")
+    log(f"  • Time zone: {tz_name}")
+    log(f"  • OpenWebif: {env.get('OWI_HOST', '')}:{env.get('OWI_PORT', '80')}")
+    log(f"  • Credentials: username {masked_username}, password {masked_password}")
+    log(f"  • Bouquets: {env.get('OWI_BOUQUETS', '') or '<all>'}")
+    log(f"  • Output file: {env.get('OWI_OUTPUT_FILE', '/data/epg.xml')}")
     log(
-        "  flags="
+        "  • Flags: "
         f"continuous_numbering={is_true(env.get('OWI_CONTINUOUS_NUMBERING', 'false'))}, "
         f"debug={is_true(env.get('OWI_DEBUG', 'false'))}, "
         f"category_override={env.get('OWI_CATEGORY_OVERRIDE', '') or '<none>'}"
     )
     if cron_schedule:
-        log(f"  schedule={cron_schedule} run_on_start={run_on_start}")
-    log(f"  command={' '.join(shlex.quote(a) for a in ['owi2plex', *args])}")
+        log(f"  • Schedule: {cron_schedule}")
+        log(f"  • Schedule (human): {describe_cron(cron_schedule)}")
+        log(f"  • Run on start: {run_on_start}")
+    log(f"  • Command: {' '.join(shlex.quote(a) for a in ['owi2plex', *args])}")
 
 
 def _parse_part(part: str, min_v: int, max_v: int) -> set[int]:

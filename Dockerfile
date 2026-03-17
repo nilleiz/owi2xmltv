@@ -9,6 +9,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata ca-certificates curl git tini \
  && rm -rf /var/lib/apt/lists/*
 
+RUN apk add --no-cache bash tzdata ca-certificates curl shadow su-exec util-linux
+RUN addgroup -S app && adduser -S -G app app
+ENV TZ=Europe/Berlin
 WORKDIR /app
 
 # Install dependencies for local runner and owi2plex CLI.

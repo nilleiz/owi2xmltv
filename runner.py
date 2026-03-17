@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -16,6 +17,45 @@ def is_true(value: str) -> bool:
 def log(message: str) -> None:
     ts = datetime.now().isoformat(timespec="seconds")
     print(f"[owi2xmltv][{ts}] {message}", flush=True)
+
+
+_BYTES_LINE_RE = re.compile(r"^b(['\"])(.*)\1$")
+
+
+def clean_owi2plex_line(line: str) -> str:
+    text = line.rstrip()
+    match = _BYTES_LINE_RE.match(text)
+    if not match:
+        return text
+
+    quote = match.group(1)
+    body = match.group(2)
+    escaped = body.replace('\\', '\\\\').replace(quote, f"\\{quote}")
+    try:
+        return bytes(escaped, "utf-8").decode("unicode_escape")
+    except UnicodeDecodeError:
+        return text
+
+
+def log_run_options(env: dict[str, str], args: list[str], *, cron_schedule: str, run_on_start: bool, run_once: bool, tz_name: str) -> None:
+    masked_password = "set" if env.get("OWI_PASSWORD", "") else "not set"
+    masked_username = "set" if env.get("OWI_USERNAME", "") else "not set"
+    mode = "RUN_ONCE" if run_once else ("CRON" if cron_schedule else "SINGLE_RUN" if run_on_start else "IDLE")
+
+    log("Run options:")
+    log(f"  mode={mode} tz={tz_name}")
+    log(f"  host={env.get('OWI_HOST', '')}:{env.get('OWI_PORT', '80')} username={masked_username} password={masked_password}")
+    log(f"  bouquets={env.get('OWI_BOUQUETS', '') or '<all>'}")
+    log(f"  output_file={env.get('OWI_OUTPUT_FILE', '/data/epg.xml')}")
+    log(
+        "  flags="
+        f"continuous_numbering={is_true(env.get('OWI_CONTINUOUS_NUMBERING', 'false'))}, "
+        f"debug={is_true(env.get('OWI_DEBUG', 'false'))}, "
+        f"category_override={env.get('OWI_CATEGORY_OVERRIDE', '') or '<none>'}"
+    )
+    if cron_schedule:
+        log(f"  schedule={cron_schedule} run_on_start={run_on_start}")
+    log(f"  command={' '.join(shlex.quote(a) for a in ['owi2plex', *args])}")
 
 
 def _parse_part(part: str, min_v: int, max_v: int) -> set[int]:
@@ -121,6 +161,43 @@ def build_args(env: dict[str, str]) -> list[str]:
     return args
 
 
+
+def ensure_writable_path(output_file: str) -> bool:
+    output_dir = os.path.dirname(output_file) or "."
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except OSError as exc:
+        log(f"ERROR: Could not create output directory '{output_dir}': {exc}")
+        return False
+
+    # Best-effort permission normalization for directories/files we own.
+    try:
+        os.chmod(output_dir, 0o775)
+    except OSError:
+        pass
+
+    if os.path.exists(output_file):
+        try:
+            os.chmod(output_file, 0o664)
+        except OSError:
+            pass
+
+    try:
+        with open(output_file, "a", encoding="utf-8"):
+            pass
+        return True
+    except OSError as exc:
+        log(
+            "ERROR: Output file is not writable. "
+            f"path={output_file} uid={os.getuid()} gid={os.getgid()} error={exc}"
+        )
+        log(
+            "Hint: ensure host bind-mount paths are writable by UID:GID 1000:1000 "
+            "(for example: chown -R 1000:1000 ./data ./config)."
+        )
+        return False
+
+
 def run_owi2plex(args: list[str], reason: str) -> int:
     cmd = ["owi2plex"] + args
     log(f"Starting owi2plex ({reason}): {' '.join(shlex.quote(a) for a in cmd)}")
@@ -138,7 +215,7 @@ def run_owi2plex(args: list[str], reason: str) -> int:
 
     assert process.stdout is not None
     for line in process.stdout:
-        print(f"[owi2plex] {line.rstrip()}", flush=True)
+        print(f"[owi2plex] {clean_owi2plex_line(line)}", flush=True)
 
     rc = process.wait()
     if rc == 0:
@@ -170,26 +247,22 @@ def main() -> int:
 
     args = build_args(env)
 
+    output_file = env.get("OWI_OUTPUT_FILE", "/data/epg.xml")
+    if not ensure_writable_path(output_file):
+        return 2
+
     cron_schedule = env.get("CRON_SCHEDULE", "").strip()
     run_on_start = is_true(env.get("RUN_ON_START", "true"))
     run_once = is_true(env.get("RUN_ONCE", "false"))
 
-    safe_env_view = {
-        "TZ": tz_name,
-        "OWI_HOST": env.get("OWI_HOST", ""),
-        "OWI_PORT": env.get("OWI_PORT", "80"),
-        "OWI_USERNAME_SET": bool(env.get("OWI_USERNAME", "")),
-        "OWI_PASSWORD_SET": bool(env.get("OWI_PASSWORD", "")),
-        "OWI_BOUQUETS": env.get("OWI_BOUQUETS", ""),
-        "OWI_OUTPUT_FILE": env.get("OWI_OUTPUT_FILE", "/data/epg.xml"),
-        "OWI_CONTINUOUS_NUMBERING": env.get("OWI_CONTINUOUS_NUMBERING", "false"),
-        "OWI_CATEGORY_OVERRIDE": env.get("OWI_CATEGORY_OVERRIDE", ""),
-        "OWI_DEBUG": env.get("OWI_DEBUG", "false"),
-        "CRON_SCHEDULE": cron_schedule,
-        "RUN_ON_START": run_on_start,
-        "RUN_ONCE": run_once,
-    }
-    log(f"Runtime configuration: {safe_env_view}")
+    log_run_options(
+        env,
+        args,
+        cron_schedule=cron_schedule,
+        run_on_start=run_on_start,
+        run_once=run_once,
+        tz_name=tz_name,
+    )
 
     if run_once:
         return run_owi2plex(args, "RUN_ONCE")
@@ -214,7 +287,8 @@ def main() -> int:
     while not stop_requested:
         now = datetime.now(tz)
         next_run = next_run_after(now, cron_fields)
-        log(f"Next scheduled execution at {next_run.isoformat()}")
+        seconds_left = max(int((next_run - now).total_seconds()), 0)
+        log(f"Next scheduled execution at {next_run.isoformat()} (in {seconds_left}s)")
 
         while not stop_requested:
             remaining = (next_run - datetime.now(tz)).total_seconds()

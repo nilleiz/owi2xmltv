@@ -1,9 +1,11 @@
 version: "3.9"
 
 services:
-  owi2plex:
-    image: nillivanilli0815/owi2plex:latest
-    container_name: owi2plex
+  owi2xmltv:
+    image: nillivanilli0815/owi2xmltv:latest
+    container_name: owi2xmltv
+    user: "1000:1000"
+
     environment:
       TZ: Europe/Berlin
 
@@ -15,17 +17,18 @@ services:
 
       # --- Export settings ---
       OWI_BOUQUETS: "TV,Radio"        # comma-separated; empty => all bouquets
-      OWI_OUTPUT_FILE: "/data/epg.xml"
+      OWI_OUTPUT_FILE: "/data/owi.xml"
       OWI_CONTINUOUS_NUMBERING: "true"
       OWI_CATEGORY_OVERRIDE: "/config/cat_overrides.yml"  # optional file path
       OWI_DEBUG: "false"
 
       # --- Scheduling ---
-      CRON_SCHEDULE: "0 4 * * *"      # run daily at 04:00; empty to disable cron
-      RUN_ON_START: "true"            # also run once at container start
-      RUN_ONCE: "false"               # set true to run a single job and exit
+      CRON_SCHEDULE: "*/5 * * * *"    # empty to disable scheduler
+      RUN_ON_START: "true"            # run once immediately before cron loop
+      RUN_ONCE: "false"               # run a single job and exit
 
     volumes:
-      - ./data:/data                  # where epg.xml is written
-      - ./config:/config              # optional config files
+      - ./data:/data
+      - ./config:/config
+
     restart: unless-stopped

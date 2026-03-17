@@ -188,11 +188,17 @@ def _take_ownership(path: str, uid: int, gid: int) -> None:
 
 def ensure_writable_path(output_file: str, run_uid: int, run_gid: int) -> bool:
     output_dir = os.path.dirname(output_file) or "."
+    is_root = os.geteuid() == 0
     try:
         os.makedirs(output_dir, exist_ok=True)
     except OSError as exc:
         log(f"ERROR: Could not create output directory '{output_dir}': {exc}")
         return False
+
+    # When starting as root, proactively transfer ownership of the output
+    # directory so the runtime user can create/modify files later.
+    if is_root:
+        _take_ownership(output_dir, run_uid, run_gid)
 
     # Best-effort permission normalization for directories/files we own.
     try:
@@ -209,9 +215,15 @@ def ensure_writable_path(output_file: str, run_uid: int, run_gid: int) -> bool:
     try:
         with open(output_file, "a", encoding="utf-8"):
             pass
+
+        # If root created the file during startup, ownership would otherwise
+        # remain 0:0 and writes would fail after dropping privileges.
+        if is_root:
+            _take_ownership(output_file, run_uid, run_gid)
+
         return True
     except OSError as exc:
-        if os.geteuid() == 0 and exc.errno == EACCES:
+        if is_root and exc.errno == EACCES:
             log(
                 "Output file is not writable; attempting ownership fix "
                 f"for {output_file} -> {run_uid}:{run_gid}."

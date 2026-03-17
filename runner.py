@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from errno import EACCES
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -162,7 +163,30 @@ def build_args(env: dict[str, str]) -> list[str]:
 
 
 
-def ensure_writable_path(output_file: str) -> bool:
+def _coerce_id(raw: str, fallback: int, label: str) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        log(f"WARNING: Invalid {label}='{raw}', using {fallback}.")
+        return fallback
+
+
+def runtime_ids_from_env(env: dict[str, str]) -> tuple[int, int]:
+    default_uid = os.getuid()
+    default_gid = os.getgid()
+    uid = _coerce_id(env.get("OWI_UID", str(default_uid)), default_uid, "OWI_UID")
+    gid = _coerce_id(env.get("OWI_GID", str(default_gid)), default_gid, "OWI_GID")
+    return uid, gid
+
+
+def _take_ownership(path: str, uid: int, gid: int) -> None:
+    try:
+        os.chown(path, uid, gid)
+    except OSError as exc:
+        log(f"WARNING: Could not chown '{path}' to {uid}:{gid}: {exc}")
+
+
+def ensure_writable_path(output_file: str, run_uid: int, run_gid: int) -> bool:
     output_dir = os.path.dirname(output_file) or "."
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -187,15 +211,62 @@ def ensure_writable_path(output_file: str) -> bool:
             pass
         return True
     except OSError as exc:
+        if os.geteuid() == 0 and exc.errno == EACCES:
+            log(
+                "Output file is not writable; attempting ownership fix "
+                f"for {output_file} -> {run_uid}:{run_gid}."
+            )
+            _take_ownership(output_dir, run_uid, run_gid)
+            if os.path.exists(output_file):
+                _take_ownership(output_file, run_uid, run_gid)
+            else:
+                try:
+                    with open(output_file, "a", encoding="utf-8"):
+                        pass
+                except OSError:
+                    pass
+                _take_ownership(output_file, run_uid, run_gid)
+
+            try:
+                os.chmod(output_dir, 0o775)
+            except OSError:
+                pass
+            try:
+                os.chmod(output_file, 0o664)
+            except OSError:
+                pass
+
+            try:
+                with open(output_file, "a", encoding="utf-8"):
+                    pass
+                log(f"Ownership fix succeeded for '{output_file}'.")
+                return True
+            except OSError as retry_exc:
+                exc = retry_exc
+
         log(
             "ERROR: Output file is not writable. "
             f"path={output_file} uid={os.getuid()} gid={os.getgid()} error={exc}"
         )
         log(
-            "Hint: ensure host bind-mount paths are writable by UID:GID 1000:1000 "
-            "(for example: chown -R 1000:1000 ./data ./config)."
+            "Hint: run container as root once to auto-fix ownership, or ensure host "
+            f"bind-mount paths are writable by UID:GID {run_uid}:{run_gid}."
         )
         return False
+
+
+def drop_privileges(uid: int, gid: int) -> None:
+    if os.geteuid() != 0:
+        return
+
+    try:
+        os.setgroups([])
+    except OSError:
+        pass
+
+    os.setgid(gid)
+    os.setuid(uid)
+    log(f"Dropped privileges to UID:GID {uid}:{gid}.")
 
 
 def run_owi2plex(args: list[str], reason: str) -> int:
@@ -245,11 +316,14 @@ def main() -> int:
     os.makedirs("/data", exist_ok=True)
     os.makedirs("/config", exist_ok=True)
 
+    run_uid, run_gid = runtime_ids_from_env(env)
     args = build_args(env)
 
     output_file = env.get("OWI_OUTPUT_FILE", "/data/epg.xml")
-    if not ensure_writable_path(output_file):
+    if not ensure_writable_path(output_file, run_uid, run_gid):
         return 2
+
+    drop_privileges(run_uid, run_gid)
 
     cron_schedule = env.get("CRON_SCHEDULE", "").strip()
     run_on_start = is_true(env.get("RUN_ON_START", "true"))

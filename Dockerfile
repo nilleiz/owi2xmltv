@@ -32,6 +32,8 @@ RUN groupadd --gid 1000 app \
  && mkdir -p /data /config \
  && chown -R 1000:1000 /app /data /config
 
-USER 1000:1000
+ENV OWI_UID=1000 \
+    OWI_GID=1000
+
 VOLUME ["/data", "/config"]
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "/app/runner.py"]

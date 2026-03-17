@@ -1,39 +1,31 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-alpine
+FROM python:3.12-slim
 
-RUN apk add --no-cache bash tzdata ca-certificates curl shadow su-exec
-RUN addgroup -S app && adduser -S -G app app
-ENV TZ=Europe/Berlin
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=Europe/Berlin
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tzdata ca-certificates curl git tini \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# No native builds: prebuilt lxml + owi2plex without deps
+# Install dependencies for local runner and owi2plex CLI.
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir "lxml==4.9.4" \
- && pip install --no-cache-dir --no-deps "owi2plex==0.1a14" \
- && pip install --no-cache-dir --no-deps "click==7.0" "future==0.17.1" "PyYAML==5.1.2"
+ && pip install --no-cache-dir requests click future PyYAML lxml
 
-# Legacy-but-stable HTTP stack compatible with Py3.12 and urllib3.packages.six
-RUN pip uninstall -y urllib3 requests chardet idna certifi six || true \
- && pip install --no-cache-dir --no-deps \
-      "requests==2.25.1" \
-      "urllib3==1.26.18" \
-      "chardet==3.0.4" \
-      "idna==2.10" \
-      "certifi==2020.12.5" \
-      "six==1.16.0" \
- && python - <<'PY'
-import requests, urllib3, six
-print("requests", requests.__version__, "| urllib3", urllib3.__version__, "| six", six.__version__)
-import urllib3.exceptions  # prove vendored six path exists
-print("vendored six OK")
-PY
+# Install owi2plex from upstream source to avoid depending on stale binary wheels.
+RUN git clone --depth=1 https://github.com/cvarelaruiz/owi2plex /tmp/owi2plex-src \
+ && pip install --no-cache-dir /tmp/owi2plex-src \
+ && rm -rf /tmp/owi2plex-src
 
-RUN mkdir -p /data /config /var/log/cron \
- && chown -R app:app /app /data /config /var/log/cron
+COPY runner.py /app/runner.py
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN useradd -r -u 10001 -m app \
+ && mkdir -p /data /config \
+ && chown -R app:app /app /data /config
 
-USER root
+USER app
 VOLUME ["/data", "/config"]
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "/app/runner.py"]

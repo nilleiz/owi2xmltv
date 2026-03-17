@@ -104,13 +104,15 @@ setup_cron() {
   local runner
   runner="$(make_cron_wrapper)"
 
-  # BusyBox cron uses /etc/crontabs/root
+  # BusyBox crond on Alpine is typically started with -c /etc/crontabs.
+  # Write there and explicitly set -c when launching to avoid path mismatches.
   local line="$schedule /usr/bin/flock -n /tmp/owi2plex.lock $runner >> /var/log/cron/owi2plex.log 2>&1"
   echo "$line" > /etc/crontabs/root
+  chmod 600 /etc/crontabs/root || true
   log "Installed cron: $line"
 
-  # Foreground cron so the container stays up; log to file
-  exec crond -f -L /var/log/cron/cron.log
+  # Foreground cron so the container stays up; make cron directory explicit.
+  exec crond -f -c /etc/crontabs -L /var/log/cron/cron.log
 }
 
 # -------------------- Control flow ---------------

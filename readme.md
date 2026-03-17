@@ -2,6 +2,8 @@
 
 This image runs `owi2plex` with the same environment variables as before, but with a rewritten runtime scheduler that is deterministic and fully visible in container logs.
 
+By default, the container starts as root, ensures the output path is writable, optionally takes ownership of it, and then drops privileges to a non-root runtime UID/GID.
+
 ## Runtime behavior
 
 The container now uses an internal Python scheduler (`runner.py`) with cron expression support:
@@ -33,6 +35,8 @@ The image now also installs an explicit `/usr/local/bin/owi2plex` launcher so th
 - `OWI_CONTINUOUS_NUMBERING`
 - `OWI_CATEGORY_OVERRIDE`
 - `OWI_DEBUG`
+- `OWI_UID` (runtime UID after startup checks, default `1000`)
+- `OWI_GID` (runtime GID after startup checks, default `1000`)
 - `CRON_SCHEDULE`
 - `RUN_ON_START`
 - `RUN_ONCE`
@@ -46,7 +50,6 @@ services:
   owi2xmltv:
     image: nillivanilli0815/owi2xmltv:latest
     container_name: owi2xmltv
-    user: "1000:1000"
     environment:
       TZ: Europe/Berlin
       OWI_HOST: "192.168.1.50"
@@ -71,7 +74,7 @@ services:
 
 ## Notes on bind-mount permissions
 
-This image runs as UID/GID `1000:1000` by default. If you bind-mount host directories (for example `./data:/data`), ensure they are writable by `1000:1000`.
+This image defaults to runtime UID/GID `1000:1000` (`OWI_UID` / `OWI_GID`). On startup (as root), it will try to auto-fix ownership for `OWI_OUTPUT_FILE` when needed, then drop privileges. If your mount is still not writable, ensure host directories are writable by your configured UID/GID.
 
 ```bash
 chown -R 1000:1000 ./data ./config

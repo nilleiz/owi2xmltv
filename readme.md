@@ -55,7 +55,7 @@ Workflow: `.github/workflows/docker-publish.yml`
 
 It builds and pushes multi-arch images (`linux/amd64`, `linux/arm64`) to:
 
-- `nillivanilli0815/owi2xmltv:latest` (on `main`)
+- `nillivanilli0815/owi2xmltv:latest` (on default branch: `master`/`main`)
 - `nillivanilli0815/owi2xmltv:<tag>` (on git tags like `v1.0.0`)
 - `nillivanilli0815/owi2xmltv:sha-...`
 

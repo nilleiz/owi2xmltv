@@ -16,7 +16,7 @@ The image now also installs an explicit `/usr/local/bin/owi2plex` launcher so th
 
 ## Logs now include
 
-- Effective runtime config (run-related env vars, secrets masked as *_SET booleans).
+- Effective run options (mode, output file, selected flags, and command).
 - Exact `owi2plex` command start reason (`RUN_ON_START`, `CRON_SCHEDULE`, `RUN_ONCE`).
 - Live `owi2plex` stdout/stderr in container logs.
 - The next scheduled execution timestamp after each cycle.
@@ -46,6 +46,7 @@ services:
   owi2xmltv:
     image: nillivanilli0815/owi2xmltv:latest
     container_name: owi2xmltv
+    user: "1000:1000"
     environment:
       TZ: Europe/Berlin
       OWI_HOST: "192.168.1.50"
@@ -67,6 +68,16 @@ services:
 ```
 
 ## GitHub Actions publish
+
+## Notes on bind-mount permissions
+
+This image runs as UID/GID `1000:1000` by default. If you bind-mount host directories (for example `./data:/data`), ensure they are writable by `1000:1000`.
+
+```bash
+chown -R 1000:1000 ./data ./config
+```
+
+The container also performs a startup write-check for `OWI_OUTPUT_FILE` and prints a clear hint if permissions are still incorrect.
 
 Workflow: `.github/workflows/docker-publish.yml`
 

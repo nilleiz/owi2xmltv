@@ -26,10 +26,12 @@ COPY runner.py /app/runner.py
 RUN printf '%s\n' '#!/usr/bin/env sh' 'exec python /app/owi2plex.py "$@"' > /usr/local/bin/owi2plex \
  && chmod +x /usr/local/bin/owi2plex
 
-RUN useradd --system --uid 10001 --create-home app \
+# Default runtime user/group aligned to typical host UID/GID for bind mounts.
+RUN groupadd --gid 1000 app \
+ && useradd --uid 1000 --gid 1000 --create-home app \
  && mkdir -p /data /config \
- && chown -R app:app /app /data /config
+ && chown -R 1000:1000 /app /data /config
 
-USER app
+USER 1000:1000
 VOLUME ["/data", "/config"]
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "/app/runner.py"]

@@ -42,20 +42,45 @@ def _plural(unit: str, count: int) -> str:
     return unit if count == 1 else f"{unit}s"
 
 
-def _describe_cron_field(field: str, unit: str) -> str:
-    token = field.strip()
-    if token == "*":
-        return f"every {unit}"
-    if token.startswith("*/"):
-        step = int(token[2:])
-        return f"every {step} {_plural(unit, step)}"
-    if "," in token:
-        values = [v.strip() for v in token.split(",") if v.strip()]
-        return f"at {_plural(unit, 2)} {', '.join(values)}"
-    if "-" in token:
-        start, end = [v.strip() for v in token.split("-", 1)]
-        return f"every {unit} from {start} through {end}"
-    return f"at {unit} {token}"
+def _weekday_name(token: str) -> str:
+    names = {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday",
+        "7": "Sunday",
+    }
+    return names.get(token, token)
+
+
+def _format_hhmm(hour: str, minute: str) -> str:
+    return f"{int(hour):02d}:{int(minute):02d}"
+
+
+def _format_duration(delta: timedelta) -> str:
+    total_seconds = max(int(delta.total_seconds()), 0)
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+
+    minutes, _ = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def _format_run_time(run_time: datetime, reference: datetime) -> str:
+    timestamp = run_time.strftime("%a, %Y-%m-%d %H:%M %Z")
+    return f"{timestamp} (in {_format_duration(run_time - reference)})"
 
 
 def describe_cron(expr: str) -> str:
@@ -64,14 +89,21 @@ def describe_cron(expr: str) -> str:
         return "(invalid cron expression)"
 
     minute, hour, day, month, weekday = parts
-    return (
-        "Runs "
-        f"{_describe_cron_field(minute, 'minute')}, "
-        f"{_describe_cron_field(hour, 'hour')}, "
-        f"{_describe_cron_field(day, 'day')}, "
-        f"{_describe_cron_field(month, 'month')}, "
-        f"and {_describe_cron_field(weekday, 'weekday')}."
-    )
+
+    if parts == ["*", "*", "*", "*", "*"]:
+        return "every minute"
+    if hour == day == month == weekday == "*" and minute.startswith("*/"):
+        return f"every {int(minute[2:])} minutes"
+    if hour == day == month == weekday == "*" and minute.isdigit():
+        return f"hourly at :{int(minute):02d}"
+    if day == month == weekday == "*" and minute.isdigit() and hour.isdigit():
+        return f"daily at {_format_hhmm(hour, minute)}"
+    if day == month == "*" and minute.isdigit() and hour.isdigit() and weekday.isdigit():
+        return f"every {_weekday_name(weekday)} at {_format_hhmm(hour, minute)}"
+    if month == weekday == "*" and minute.isdigit() and hour.isdigit() and day.isdigit():
+        return f"monthly on day {int(day)} at {_format_hhmm(hour, minute)}"
+
+    return f"cron '{expr}'"
 
 
 def log_run_options(
@@ -99,11 +131,12 @@ def log_run_options(
         f"category_override={env.get('OWI_CATEGORY_OVERRIDE', '') or '<none>'}"
     )
     if cron_schedule:
+        now = datetime.now(ZoneInfo(tz_name))
         log(f"  • Schedule: {describe_cron(cron_schedule)}")
         if next_runs:
             log("  • Next runs:")
             for idx, run_time in enumerate(next_runs, start=1):
-                log(f"    {idx}. {run_time.isoformat()}")
+                log(f"    {idx}. {_format_run_time(run_time, now)}")
         log(f"  • Run on start: {run_on_start}")
     log(f"  • Command: {' '.join(shlex.quote(a) for a in ['owi2plex', *args])}")
 
@@ -439,8 +472,7 @@ def main() -> int:
     while not stop_requested:
         now = datetime.now(tz)
         next_run = next_run_after(now, cron_fields)
-        seconds_left = max(int((next_run - now).total_seconds()), 0)
-        log(f"Next scheduled execution at {next_run.isoformat()} (in {seconds_left}s)")
+        log(f"Next scheduled execution {_format_run_time(next_run, now)}")
 
         while not stop_requested:
             remaining = (next_run - datetime.now(tz)).total_seconds()

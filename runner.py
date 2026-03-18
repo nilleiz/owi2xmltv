@@ -38,17 +38,24 @@ def clean_owi2plex_line(line: str) -> str:
         return text
 
 
+def _plural(unit: str, count: int) -> str:
+    return unit if count == 1 else f"{unit}s"
+
+
 def _describe_cron_field(field: str, unit: str) -> str:
     token = field.strip()
     if token == "*":
         return f"every {unit}"
     if token.startswith("*/"):
-        return f"every {token[2:]} {unit}s"
+        step = int(token[2:])
+        return f"every {step} {_plural(unit, step)}"
     if "," in token:
-        return f"{unit}s {token}"
+        values = [v.strip() for v in token.split(",") if v.strip()]
+        return f"at {_plural(unit, 2)} {', '.join(values)}"
     if "-" in token:
-        return f"{unit}s {token}"
-    return f"{unit} {token}"
+        start, end = [v.strip() for v in token.split("-", 1)]
+        return f"every {unit} from {start} through {end}"
+    return f"at {unit} {token}"
 
 
 def describe_cron(expr: str) -> str:
@@ -58,24 +65,31 @@ def describe_cron(expr: str) -> str:
 
     minute, hour, day, month, weekday = parts
     return (
+        "Runs "
         f"{_describe_cron_field(minute, 'minute')}, "
         f"{_describe_cron_field(hour, 'hour')}, "
         f"{_describe_cron_field(day, 'day')}, "
         f"{_describe_cron_field(month, 'month')}, "
-        f"{_describe_cron_field(weekday, 'weekday')}"
+        f"and {_describe_cron_field(weekday, 'weekday')}."
     )
 
 
-def log_run_options(env: dict[str, str], args: list[str], *, cron_schedule: str, run_on_start: bool, run_once: bool, tz_name: str) -> None:
-    masked_password = "set" if env.get("OWI_PASSWORD", "") else "not set"
-    masked_username = "set" if env.get("OWI_USERNAME", "") else "not set"
+def log_run_options(
+    env: dict[str, str],
+    args: list[str],
+    *,
+    cron_schedule: str,
+    run_on_start: bool,
+    run_once: bool,
+    tz_name: str,
+    next_runs: list[datetime],
+) -> None:
     mode = "RUN_ONCE" if run_once else ("CRON" if cron_schedule else "SINGLE_RUN" if run_on_start else "IDLE")
 
     log("Run options:")
     log(f"  • Mode: {mode}")
     log(f"  • Time zone: {tz_name}")
     log(f"  • OpenWebif: {env.get('OWI_HOST', '')}:{env.get('OWI_PORT', '80')}")
-    log(f"  • Credentials: username {masked_username}, password {masked_password}")
     log(f"  • Bouquets: {env.get('OWI_BOUQUETS', '') or '<all>'}")
     log(f"  • Output file: {env.get('OWI_OUTPUT_FILE', '/data/epg.xml')}")
     log(
@@ -85,8 +99,11 @@ def log_run_options(env: dict[str, str], args: list[str], *, cron_schedule: str,
         f"category_override={env.get('OWI_CATEGORY_OVERRIDE', '') or '<none>'}"
     )
     if cron_schedule:
-        log(f"  • Schedule: {cron_schedule}")
-        log(f"  • Schedule (human): {describe_cron(cron_schedule)}")
+        log(f"  • Schedule: {describe_cron(cron_schedule)}")
+        if next_runs:
+            log("  • Next runs:")
+            for idx, run_time in enumerate(next_runs, start=1):
+                log(f"    {idx}. {run_time.isoformat()}")
         log(f"  • Run on start: {run_on_start}")
     log(f"  • Command: {' '.join(shlex.quote(a) for a in ['owi2plex', *args])}")
 
@@ -153,6 +170,16 @@ def next_run_after(now: datetime, cron_fields) -> datetime:
             return candidate
         candidate += timedelta(minutes=1)
     raise RuntimeError("Could not compute next run from CRON_SCHEDULE")
+
+
+def next_runs_after(now: datetime, cron_fields, count: int) -> list[datetime]:
+    runs: list[datetime] = []
+    cursor = now
+    for _ in range(count):
+        nxt = next_run_after(cursor, cron_fields)
+        runs.append(nxt)
+        cursor = nxt
+    return runs
 
 
 def build_args(env: dict[str, str]) -> list[str]:
@@ -373,6 +400,16 @@ def main() -> int:
     run_on_start = is_true(env.get("RUN_ON_START", "true"))
     run_once = is_true(env.get("RUN_ONCE", "false"))
 
+    cron_fields = None
+    next_runs: list[datetime] = []
+    if cron_schedule:
+        try:
+            cron_fields = parse_cron(cron_schedule)
+            next_runs = next_runs_after(datetime.now(tz), cron_fields, 3)
+        except Exception as exc:
+            log(f"ERROR: Invalid CRON_SCHEDULE: {exc}")
+            return 2
+
     log_run_options(
         env,
         args,
@@ -380,6 +417,7 @@ def main() -> int:
         run_on_start=run_on_start,
         run_once=run_once,
         tz_name=tz_name,
+        next_runs=next_runs,
     )
 
     if run_once:
@@ -393,11 +431,7 @@ def main() -> int:
             time.sleep(2)
         return 0
 
-    try:
-        cron_fields = parse_cron(cron_schedule)
-    except Exception as exc:
-        log(f"ERROR: Invalid CRON_SCHEDULE '{cron_schedule}': {exc}")
-        return 2
+    assert cron_fields is not None
 
     if run_on_start:
         run_owi2plex(args, "RUN_ON_START")

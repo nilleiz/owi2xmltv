@@ -87,7 +87,7 @@ Startup logs include:
 - selected bouquets and output file
 - enabled flags
 - full executed command
-- schedule in raw cron and human-readable form
+- schedule in short human-readable form
 - exact run reason (`RUN_ON_START`, `CRON_SCHEDULE`, `RUN_ONCE`)
 - live `owi2plex` output
 - next scheduled run time

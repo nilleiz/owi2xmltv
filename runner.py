@@ -86,14 +86,16 @@ def _format_run_time(run_time: datetime, reference: datetime) -> str:
 def describe_cron(expr: str) -> str:
     parts = expr.split()
     if len(parts) != 5:
-        return "(invalid cron expression)"
+        return "invalid schedule"
 
     minute, hour, day, month, weekday = parts
 
     if parts == ["*", "*", "*", "*", "*"]:
         return "every minute"
-    if hour == day == month == weekday == "*" and minute.startswith("*/"):
-        return f"every {int(minute[2:])} minutes"
+    if hour == day == month == weekday == "*" and minute.startswith("*/") and minute[2:].isdigit():
+        interval = int(minute[2:])
+        unit = "minute" if interval == 1 else "minutes"
+        return f"every {interval} {unit}"
     if hour == day == month == weekday == "*" and minute.isdigit():
         return f"hourly at :{int(minute):02d}"
     if day == month == weekday == "*" and minute.isdigit() and hour.isdigit():
@@ -103,7 +105,7 @@ def describe_cron(expr: str) -> str:
     if month == weekday == "*" and minute.isdigit() and hour.isdigit() and day.isdigit():
         return f"monthly on day {int(day)} at {_format_hhmm(hour, minute)}"
 
-    return f"cron '{expr}'"
+    return "custom schedule"
 
 
 def log_run_options(
